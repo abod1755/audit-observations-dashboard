@@ -6,6 +6,11 @@ import {
   startTransition
 } from "react";
 import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut
+} from "firebase/auth";
+import {
   collection,
   doc,
   getDocs,
@@ -14,7 +19,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import initialProjects from "./projects.json";
-import { db } from "./firebase";
+import { auth, db, googleProvider } from "./firebase";
 import "./App.css";
 
 const STATUSES = [
@@ -70,8 +75,11 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [syncError, setSyncError] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
 
   const deferredSearch = useDeferredValue(search);
+
+  useEffect(() => onAuthStateChanged(auth, setCurrentUser), []);
 
   useEffect(() => {
     let isActive = true;
@@ -210,6 +218,8 @@ export default function App() {
     [projects]
   );
 
+  const canEdit = Boolean(currentUser);
+
   const persistProjectUpdate = async (projectId, patch) => {
     try {
       await updateDoc(doc(db, OBSERVATIONS_COLLECTION, String(projectId)), patch);
@@ -240,6 +250,24 @@ export default function App() {
       });
 
       await batch.commit();
+      setSyncError("");
+    } catch (error) {
+      setSyncError(error.message);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      setSyncError("");
+    } catch (error) {
+      setSyncError(error.message);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
       setSyncError("");
     } catch (error) {
       setSyncError(error.message);
@@ -297,7 +325,9 @@ export default function App() {
               ? "Connecting to Firebase..."
               : syncError
                 ? `Sync issue: ${syncError}`
-                : "All edits are now saved to Firebase."}
+                : canEdit
+                  ? `Signed in as ${currentUser.email}`
+                  : "View-only mode for visitors. Sign in to edit."}
           </small>
         </div>
 
@@ -346,6 +376,30 @@ export default function App() {
             Reset Firebase Data
           </button>
         </div>
+
+        <div className="auth-panel">
+          {canEdit ? (
+            <>
+              <div className="auth-copy">
+                <strong>Editing enabled</strong>
+                <span>{currentUser.email}</span>
+              </div>
+              <button type="button" className="primary-button" onClick={handleSignOut}>
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="auth-copy">
+                <strong>Visitor mode</strong>
+                <span>Anyone can view. Only signed-in owner should edit.</span>
+              </div>
+              <button type="button" className="primary-button" onClick={handleGoogleSignIn}>
+                Sign In with Google
+              </button>
+            </>
+          )}
+        </div>
       </section>
 
       <section className="status-strip">
@@ -389,16 +443,23 @@ export default function App() {
               <span className="project-date">Due: {project.dueDate}</span>
             </div>
 
-            <label className="editor-block">
-              <span>Observation</span>
-              <textarea
-                rows="4"
-                value={project.title}
-                onChange={(event) =>
-                  updateProject(project.id, "title", event.target.value)
-                }
-              />
-            </label>
+            {canEdit ? (
+              <label className="editor-block">
+                <span>Observation</span>
+                <textarea
+                  rows="4"
+                  value={project.title}
+                  onChange={(event) =>
+                    updateProject(project.id, "title", event.target.value)
+                  }
+                />
+              </label>
+            ) : (
+              <div className="viewer-block">
+                <span>Observation</span>
+                <p>{project.title}</p>
+              </div>
+            )}
 
             <dl className="project-meta">
               <div>
@@ -423,16 +484,23 @@ export default function App() {
               </div>
             </dl>
 
-            <label className="editor-block">
-              <span>Latest Update</span>
-              <textarea
-                rows="4"
-                value={project.nextStep}
-                onChange={(event) =>
-                  updateProject(project.id, "nextStep", event.target.value)
-                }
-              />
-            </label>
+            {canEdit ? (
+              <label className="editor-block">
+                <span>Latest Update</span>
+                <textarea
+                  rows="4"
+                  value={project.nextStep}
+                  onChange={(event) =>
+                    updateProject(project.id, "nextStep", event.target.value)
+                  }
+                />
+              </label>
+            ) : (
+              <div className="viewer-block">
+                <span>Latest Update</span>
+                <p>{project.nextStep}</p>
+              </div>
+            )}
 
             <div className="project-progress">
               <div className="progress-line">
@@ -441,39 +509,43 @@ export default function App() {
               <strong>{project.progress}%</strong>
             </div>
 
-            <div className="project-actions">
-              <label>
-                <span>Assign Owner</span>
-                <select
-                  value={project.owner}
-                  onChange={(event) =>
-                    updateProject(project.id, "owner", event.target.value)
-                  }
-                >
-                  {TEAM_MEMBERS.map((member) => (
-                    <option key={member} value={member}>
-                      {member}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {canEdit ? (
+              <div className="project-actions">
+                <label>
+                  <span>Assign Owner</span>
+                  <select
+                    value={project.owner}
+                    onChange={(event) =>
+                      updateProject(project.id, "owner", event.target.value)
+                    }
+                  >
+                    {TEAM_MEMBERS.map((member) => (
+                      <option key={member} value={member}>
+                        {member}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              <label>
-                <span>Update Status</span>
-                <select
-                  value={project.status}
-                  onChange={(event) =>
-                    updateProject(project.id, "status", event.target.value)
-                  }
-                >
-                  {STATUSES.map((status) => (
-                    <option key={status.id} value={status.id}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                <label>
+                  <span>Update Status</span>
+                  <select
+                    value={project.status}
+                    onChange={(event) =>
+                      updateProject(project.id, "status", event.target.value)
+                    }
+                  >
+                    {STATUSES.map((status) => (
+                      <option key={status.id} value={status.id}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <div className="view-only-banner">View only. Sign in to make changes.</div>
+            )}
           </article>
         ))}
 
