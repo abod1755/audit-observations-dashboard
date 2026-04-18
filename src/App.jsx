@@ -46,6 +46,7 @@ const STATUSES = [
 
 const TEAM_MEMBERS = ["Abdullah"];
 const OBSERVATIONS_COLLECTION = "observations";
+const ADMIN_EMAIL = "smsm17555@gmail.com";
 
 function getStatusCount(projects, statusId) {
   return projects.filter((project) => project.status === statusId).length;
@@ -76,13 +77,27 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [syncError, setSyncError] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const deferredSearch = useDeferredValue(search);
 
-  useEffect(() => onAuthStateChanged(auth, setCurrentUser), []);
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user);
+        setIsAuthReady(true);
+      }),
+    []
+  );
 
   useEffect(() => {
     let isActive = true;
+
+    if (!currentUser) {
+      return () => {
+        isActive = false;
+      };
+    }
 
     async function connectObservations() {
       try {
@@ -138,9 +153,13 @@ export default function App() {
         unsubscribeListener();
       }
     };
-  }, []);
+  }, [currentUser]);
 
   const filteredProjects = useMemo(() => {
+    if (!currentUser) {
+      return [];
+    }
+
     const normalizedSearch = deferredSearch.trim().toLowerCase();
 
     return projects.filter((project) => {
@@ -157,7 +176,7 @@ export default function App() {
 
       return matchesMember && matchesStatus && matchesSearch;
     });
-  }, [deferredSearch, projects, selectedMember, selectedStatus]);
+  }, [currentUser, deferredSearch, projects, selectedMember, selectedStatus]);
 
   const sortedProjects = useMemo(() => {
     const statusOrder = { new: 0, active: 1, review: 2, delivered: 3 };
@@ -218,7 +237,8 @@ export default function App() {
     [projects]
   );
 
-  const canEdit = Boolean(currentUser);
+  const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  const canEdit = Boolean(isAdmin);
 
   const persistProjectUpdate = async (projectId, patch) => {
     try {
@@ -276,6 +296,31 @@ export default function App() {
 
   return (
     <div className="dashboard-shell">
+      {!isAuthReady ? (
+        <section className="auth-gate">
+          <div className="auth-gate-card">
+            <span className="eyebrow">Secure Access</span>
+            <h1>Checking your session...</h1>
+            <p>Please wait while the dashboard verifies your login state.</p>
+          </div>
+        </section>
+      ) : !currentUser ? (
+        <section className="auth-gate">
+          <div className="auth-gate-card">
+            <span className="eyebrow">Secure Access</span>
+            <h1>Sign in to access the dashboard</h1>
+            <p>
+              This dashboard is private. Only authenticated users can open it, and
+              only the admin account can make changes.
+            </p>
+            <button type="button" className="primary-button" onClick={handleGoogleSignIn}>
+              Sign In with Google
+            </button>
+            {syncError ? <small>{syncError}</small> : null}
+          </div>
+        </section>
+      ) : (
+        <>
       <header className="hero-panel">
         <div className="hero-copy">
           <span className="eyebrow">Audit Remediation Workspace</span>
@@ -327,7 +372,7 @@ export default function App() {
                 ? `Sync issue: ${syncError}`
                 : canEdit
                   ? `Signed in as ${currentUser.email}`
-                  : "View-only mode for visitors. Sign in to edit."}
+                  : `Signed in as ${currentUser.email} | View only`}
           </small>
         </div>
 
@@ -381,7 +426,7 @@ export default function App() {
           {canEdit ? (
             <>
               <div className="auth-copy">
-                <strong>Editing enabled</strong>
+                <strong>Admin</strong>
                 <span>{currentUser.email}</span>
               </div>
               <button type="button" className="primary-button" onClick={handleSignOut}>
@@ -391,11 +436,11 @@ export default function App() {
           ) : (
             <>
               <div className="auth-copy">
-                <strong>Visitor mode</strong>
-                <span>Anyone can view. Only signed-in owner should edit.</span>
+                <strong>User</strong>
+                <span>Signed in without admin access. View-only mode is active.</span>
               </div>
-              <button type="button" className="primary-button" onClick={handleGoogleSignIn}>
-                Sign In with Google
+              <button type="button" className="primary-button" onClick={handleSignOut}>
+                Sign Out
               </button>
             </>
           )}
@@ -556,6 +601,8 @@ export default function App() {
           </div>
         ) : null}
       </section>
+        </>
+      )}
     </div>
   );
 }
