@@ -23,7 +23,7 @@ import { auth, db } from "./firebase";
 import "./App.css";
 
 const STATUSES = [
-  { id: "new", label: "New", hint: "Waiting to be picked up", accent: "var(--sky)" },
+  { id: "new", label: "New", hint: "Waiting to be picked up", accent: "var(--slate)" },
   {
     id: "active",
     label: "In Progress",
@@ -46,11 +46,127 @@ const STATUSES = [
 
 const TEAM_MEMBERS = ["Abdullah"];
 const OBSERVATIONS_COLLECTION = "observations";
-const ADMIN_EMAIL = "admin@riyadbank.com";
-const ALLOWED_USERS = ["admin@riyadbank.com"];
+const ROLE_BY_EMAIL = {
+  "admin@riyadbank.com": "admin"
+};
+const ALLOWED_USERS = Object.keys(ROLE_BY_EMAIL);
+
+function parseDueDate(value) {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+
+  const [day, month, year] = value.split("/").map(Number);
+
+  if (!day || !month || !year) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return "Not captured yet";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function isOverdue(project) {
+  if (project.status === "delivered") {
+    return false;
+  }
+
+  const dueDate = parseDueDate(project.dueDate);
+
+  if (!dueDate) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dueDate < today;
+}
+
+function isDueThisMonth(project) {
+  const dueDate = parseDueDate(project.dueDate);
+
+  if (!dueDate) {
+    return false;
+  }
+
+  const today = new Date();
+
+  return (
+    dueDate.getMonth() === today.getMonth() &&
+    dueDate.getFullYear() === today.getFullYear()
+  );
+}
+
+function buildHistoryEntry(message, actor) {
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    message,
+    actor,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function getRole(email) {
+  return ROLE_BY_EMAIL[email ?? ""] ?? "viewer";
+}
 
 function getStatusCount(projects, statusId) {
   return projects.filter((project) => project.status === statusId).length;
+}
+
+function enrichObservation(project) {
+  return {
+    ...project,
+    history: Array.isArray(project.history) ? project.history : [],
+    attachmentUrl: project.attachmentUrl ?? "",
+    attachmentLabel: project.attachmentLabel ?? "",
+    lastUpdatedAt: project.lastUpdatedAt ?? "",
+    lastUpdatedBy: project.lastUpdatedBy ?? "",
+    details:
+      project.details ??
+      `${project.title} This observation is being tracked through the remediation dashboard.`
+  };
+}
+
+function deriveProgressFromStatus(status, currentProgress) {
+  const baselines = {
+    new: 10,
+    active: 55,
+    review: 85,
+    delivered: 100
+  };
+
+  if (status === "delivered") {
+    return 100;
+  }
+
+  return Math.max(currentProgress, baselines[status] ?? currentProgress);
+}
+
+function clampProgress(value) {
+  const numeric = Number(value);
+
+  if (Number.isNaN(numeric)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, numeric));
 }
 
 async function seedObservationsIfEmpty() {
@@ -64,16 +180,19 @@ async function seedObservationsIfEmpty() {
   const batch = writeBatch(db);
 
   initialProjects.forEach((project) => {
-    batch.set(doc(db, OBSERVATIONS_COLLECTION, String(project.id)), project);
+    batch.set(doc(db, OBSERVATIONS_COLLECTION, String(project.id)), enrichObservation(project));
   });
 
   await batch.commit();
 }
 
 export default function App() {
-  const [projects, setProjects] = useState(initialProjects);
+  const [projects, setProjects] = useState(initialProjects.map(enrichObservation));
   const [selectedMember, setSelectedMember] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
+  const [selectedSeverity, setSelectedSeverity] = useState("All");
+  const [selectedPlatform, setSelectedPlatform] = useState("All");
+  const [selectedDueHealth, setSelectedDueHealth] = useState("All");
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [syncError, setSyncError] = useState("");
@@ -83,6 +202,8 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [selectedObservationId, setSelectedObservationId] = useState(null);
+  const [detailNote, setDetailNote] = useState("");
 
   const deferredSearch = useDeferredValue(search);
 
@@ -124,7 +245,7 @@ export default function App() {
             }
 
             const nextProjects = snapshot.docs
-              .map((snapshotDoc) => snapshotDoc.data())
+              .map((snapshotDoc) => enrichObservation(snapshotDoc.data()))
               .sort((left, right) => left.id - right.id);
 
             setProjects(nextProjects);
@@ -168,6 +289,16 @@ export default function App() {
     };
   }, [currentUser]);
 
+  const platforms = useMemo(
+    () => ["All", ...new Set(projects.map((project) => project.client))],
+    [projects]
+  );
+
+  const severities = useMemo(
+    () => ["All", ...new Set(projects.map((project) => project.category))],
+    [projects]
+  );
+
   const filteredProjects = useMemo(() => {
     if (!currentUser) {
       return [];
@@ -180,16 +311,43 @@ export default function App() {
         selectedMember === "All" || project.owner === selectedMember;
       const matchesStatus =
         selectedStatus === "All" || project.status === selectedStatus;
+      const matchesSeverity =
+        selectedSeverity === "All" || project.category === selectedSeverity;
+      const matchesPlatform =
+        selectedPlatform === "All" || project.client === selectedPlatform;
+      const matchesDueHealth =
+        selectedDueHealth === "All" ||
+        (selectedDueHealth === "Overdue" && isOverdue(project)) ||
+        (selectedDueHealth === "Due This Month" && isDueThisMonth(project)) ||
+        (selectedDueHealth === "Open" && project.status !== "delivered") ||
+        (selectedDueHealth === "Closed" && project.status === "delivered");
       const matchesSearch =
         !normalizedSearch ||
         project.name.toLowerCase().includes(normalizedSearch) ||
         project.client.toLowerCase().includes(normalizedSearch) ||
         project.title.toLowerCase().includes(normalizedSearch) ||
-        project.nextStep.toLowerCase().includes(normalizedSearch);
+        project.nextStep.toLowerCase().includes(normalizedSearch) ||
+        String(project.reference).toLowerCase().includes(normalizedSearch);
 
-      return matchesMember && matchesStatus && matchesSearch;
+      return (
+        matchesMember &&
+        matchesStatus &&
+        matchesSeverity &&
+        matchesPlatform &&
+        matchesDueHealth &&
+        matchesSearch
+      );
     });
-  }, [currentUser, deferredSearch, projects, selectedMember, selectedStatus]);
+  }, [
+    currentUser,
+    deferredSearch,
+    projects,
+    selectedDueHealth,
+    selectedMember,
+    selectedPlatform,
+    selectedSeverity,
+    selectedStatus
+  ]);
 
   const sortedProjects = useMemo(() => {
     const statusOrder = { new: 0, active: 1, review: 2, delivered: 3 };
@@ -214,6 +372,8 @@ export default function App() {
     const delivered = getStatusCount(projects, "delivered");
     const active = getStatusCount(projects, "active");
     const review = getStatusCount(projects, "review");
+    const overdue = projects.filter(isOverdue).length;
+    const dueThisMonth = projects.filter(isDueThisMonth).length;
     const highRisk = projects.filter((project) => project.risk === "High").length;
 
     return [
@@ -223,24 +383,29 @@ export default function App() {
         note: "All audit observations in one dashboard"
       },
       {
-        label: "In Progress",
-        value: active,
-        note: "Observations with active remediation"
+        label: "Open Items",
+        value: projects.filter((project) => project.status !== "delivered").length,
+        note: "Still active on the remediation board"
       },
       {
         label: "In Review",
         value: review,
-        note: "Observations waiting for evidence review"
+        note: "Waiting for closure validation"
       },
       {
-        label: "Closure Rate",
-        value: `${projects.length ? Math.round((delivered / projects.length) * 100) : 0}%`,
-        note: `${delivered} of ${projects.length} closed`
+        label: "Overdue",
+        value: overdue,
+        note: "Past due date and still open"
+      },
+      {
+        label: "Due This Month",
+        value: dueThisMonth,
+        note: "Upcoming delivery pressure"
       },
       {
         label: "Needs Attention",
         value: highRisk,
-        note: "High-severity or higher-risk items"
+        note: `${active} in progress, ${delivered} closed`
       }
     ];
   }, [projects]);
@@ -250,28 +415,87 @@ export default function App() {
     [projects]
   );
 
-  const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  const role = getRole(currentUser?.email);
+  const isAdmin = role === "admin";
   const canEdit = Boolean(isAdmin);
 
-  const persistProjectUpdate = async (projectId, patch) => {
+  const selectedObservation = useMemo(
+    () => projects.find((project) => project.id === selectedObservationId) ?? null,
+    [projects, selectedObservationId]
+  );
+
+  const applyProjectPatch = async (projectId, buildNextProject) => {
+    const currentProject = projects.find((project) => project.id === projectId);
+
+    if (!currentProject || !currentUser?.email) {
+      return;
+    }
+
+    const nextProject = buildNextProject(currentProject);
+
+    startTransition(() => {
+      setProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === projectId ? nextProject : project
+        )
+      );
+    });
+
     try {
-      await updateDoc(doc(db, OBSERVATIONS_COLLECTION, String(projectId)), patch);
+      await updateDoc(doc(db, OBSERVATIONS_COLLECTION, String(projectId)), nextProject);
       setSyncError("");
     } catch (error) {
       setSyncError(error.message);
     }
   };
 
-  const updateProject = (projectId, field, value) => {
-    startTransition(() => {
-      setProjects((currentProjects) =>
-        currentProjects.map((project) =>
-          project.id === projectId ? { ...project, [field]: value } : project
-        )
-      );
-    });
+  const updateProjectField = (projectId, field, value, message, extraPatch = {}) => {
+    void applyProjectPatch(projectId, (currentProject) => {
+      const actor = currentUser?.email ?? "Unknown";
+      const history = [
+        buildHistoryEntry(message, actor),
+        ...currentProject.history
+      ].slice(0, 20);
 
-    void persistProjectUpdate(projectId, { [field]: value });
+      const nextProgress =
+        field === "status"
+          ? deriveProgressFromStatus(value, currentProject.progress)
+          : currentProject.progress;
+
+      return {
+        ...currentProject,
+        ...extraPatch,
+        [field]: value,
+        progress: nextProgress,
+        lastUpdatedAt: new Date().toISOString(),
+        lastUpdatedBy: actor,
+        history
+      };
+    });
+  };
+
+  const saveDetailNote = () => {
+    if (!selectedObservation || !detailNote.trim()) {
+      return;
+    }
+
+    const message = detailNote.trim();
+    setDetailNote("");
+
+    void applyProjectPatch(selectedObservation.id, (currentProject) => {
+      const actor = currentUser?.email ?? "Unknown";
+      const history = [
+        buildHistoryEntry(`Added note: ${message}`, actor),
+        ...currentProject.history
+      ].slice(0, 20);
+
+      return {
+        ...currentProject,
+        lastUpdatedAt: new Date().toISOString(),
+        lastUpdatedBy: actor,
+        history
+      };
+    });
   };
 
   const resetDashboard = async () => {
@@ -279,7 +503,7 @@ export default function App() {
       const batch = writeBatch(db);
 
       initialProjects.forEach((project) => {
-        batch.set(doc(db, OBSERVATIONS_COLLECTION, String(project.id)), project);
+        batch.set(doc(db, OBSERVATIONS_COLLECTION, String(project.id)), enrichObservation(project));
       });
 
       await batch.commit();
@@ -309,6 +533,7 @@ export default function App() {
     try {
       await signOut(auth);
       setSyncError("");
+      setSelectedObservationId(null);
     } catch (error) {
       setSyncError(error.message);
     }
@@ -365,295 +590,566 @@ export default function App() {
         </section>
       ) : (
         <>
-      <header className="hero-panel">
-        <div className="hero-copy">
-          <img
-            className="brand-logo"
-            src="/riyad-bank-logo.webp"
-            alt="Riyad Bank"
-          />
-          <span className="eyebrow">Audit Remediation Workspace</span>
-          <h1>Audit Observations Tracker Dashboard</h1>
-          <p>
-            A polished web dashboard for tracking audit observations, monitoring
-            remediation status, and keeping due dates and submissions visible in
-            one place.
-          </p>
-        </div>
-
-        <div className="hero-side">
-          <div className="hero-stat">
-            <strong>{projects.length}</strong>
-            <span>observations on the board</span>
-          </div>
-          <div className="hero-stat">
-            <strong>{openCount}</strong>
-            <span>open observations</span>
-          </div>
-          <div className="hero-stat">
-            <strong>{getStatusCount(projects, "delivered")}</strong>
-            <span>closed observations</span>
-          </div>
-        </div>
-      </header>
-
-      <section className="summary-grid">
-        {summary.map((item) => (
-          <article key={item.label} className="summary-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.note}</small>
-          </article>
-        ))}
-      </section>
-
-      <section className="toolbar">
-        <div className="toolbar-title">
-          <h2>Filters and control</h2>
-          <p>
-            Ordered from Observation 1 on the left, while all closed items stay at
-            the end.
-          </p>
-          <small>
-            {isLoading
-              ? "Connecting to Firebase..."
-                : syncError
-                  ? `Sync issue: ${syncError}`
-                  : canEdit
-                    ? `Signed in as ${currentUser.email}`
-                    : `Signed in as ${currentUser.email} | View only`}
-          </small>
-        </div>
-
-        <div className="toolbar-controls">
-          <label>
-            <span>Search</span>
-            <input
-              type="search"
-              placeholder="Search observation or platform"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-
-          <label>
-            <span>Owner</span>
-            <select
-              value={selectedMember}
-              onChange={(event) => setSelectedMember(event.target.value)}
-            >
-              <option value="All">All</option>
-              {TEAM_MEMBERS.map((member) => (
-                <option key={member} value={member}>
-                  {member}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            <span>Status</span>
-            <select
-              value={selectedStatus}
-              onChange={(event) => setSelectedStatus(event.target.value)}
-            >
-              <option value="All">All</option>
-              {STATUSES.map((status) => (
-                <option key={status.id} value={status.id}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button type="button" className="secondary-button" onClick={resetDashboard}>
-            Reset Firebase Data
-          </button>
-        </div>
-
-        <div className="auth-panel">
-          {canEdit ? (
-            <>
-              <div className="auth-copy">
-                <strong>Admin</strong>
-                <span>{currentUser.email}</span>
-              </div>
-              <button type="button" className="primary-button" onClick={handleSignOut}>
-                Sign Out
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="auth-copy">
-                <strong>User</strong>
-                <span>Signed in without admin access. View-only mode is active.</span>
-              </div>
-              <button type="button" className="primary-button" onClick={handleSignOut}>
-                Sign Out
-              </button>
-            </>
-          )}
-        </div>
-      </section>
-
-      <section className="status-strip">
-        {STATUSES.map((status) => (
-          <article key={status.id} className="status-card">
-            <div>
-              <h3>{status.label}</h3>
-              <p>{status.hint}</p>
+          <header className="hero-panel">
+            <div className="hero-copy">
+              <img
+                className="brand-logo"
+                src="/riyad-bank-logo.webp"
+                alt="Riyad Bank"
+              />
+              <span className="eyebrow">Audit Remediation Workspace</span>
+              <h1>Audit Observations Tracker Dashboard</h1>
+              <p>
+                A polished workspace for tracking audit observations, due dates,
+                evidence links, ownership, and every remediation update in one place.
+              </p>
             </div>
-            <span
-              className="column-count"
-              style={{ backgroundColor: status.accent }}
-            >
-              {getStatusCount(projects, status.id)}
-            </span>
-          </article>
-        ))}
-      </section>
 
-      <section className="observation-grid">
-        {sortedProjects.map((project) => (
-          <article
-            key={project.id}
-            className={`project-card ${
-              project.status === "delivered" ? "project-card-closed" : ""
-            }`}
-          >
-            <div className="project-topline">
-              <div className="project-topline-left">
-                <span className="observation-number">{project.name}</span>
-                <span
-                  className="status-pill"
-                  style={{
-                    backgroundColor:
-                      STATUSES.find((status) => status.id === project.status)?.accent
-                  }}
+            <div className="hero-side">
+              <div className="hero-stat">
+                <strong>{projects.length}</strong>
+                <span>observations on the board</span>
+              </div>
+              <div className="hero-stat">
+                <strong>{openCount}</strong>
+                <span>open observations</span>
+              </div>
+              <div className="hero-stat">
+                <strong>{projects.filter(isOverdue).length}</strong>
+                <span>overdue observations</span>
+              </div>
+            </div>
+          </header>
+
+          <section className="summary-grid summary-grid-extended">
+            {summary.map((item) => (
+              <article key={item.label} className="summary-card">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{item.note}</small>
+              </article>
+            ))}
+          </section>
+
+          <section className="toolbar">
+            <div className="toolbar-title">
+              <h2>Filters and control</h2>
+              <p>
+                Ordered from Observation 1 on the left, while all closed items stay
+                at the end.
+              </p>
+              <small>
+                {isLoading
+                  ? "Connecting to Firebase..."
+                  : syncError
+                    ? `Sync issue: ${syncError}`
+                    : `Signed in as ${currentUser.email} | ${role.toUpperCase()}`}
+              </small>
+            </div>
+
+            <div className="toolbar-controls toolbar-controls-extended">
+              <label>
+                <span>Search</span>
+                <input
+                  type="search"
+                  placeholder="Search observation, platform, or reference"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Owner</span>
+                <select
+                  value={selectedMember}
+                  onChange={(event) => setSelectedMember(event.target.value)}
                 >
-                  {STATUSES.find((status) => status.id === project.status)?.label}
+                  <option value="All">All</option>
+                  {TEAM_MEMBERS.map((member) => (
+                    <option key={member} value={member}>
+                      {member}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Status</span>
+                <select
+                  value={selectedStatus}
+                  onChange={(event) => setSelectedStatus(event.target.value)}
+                >
+                  <option value="All">All</option>
+                  {STATUSES.map((status) => (
+                    <option key={status.id} value={status.id}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Severity</span>
+                <select
+                  value={selectedSeverity}
+                  onChange={(event) => setSelectedSeverity(event.target.value)}
+                >
+                  {severities.map((severity) => (
+                    <option key={severity} value={severity}>
+                      {severity}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Platform</span>
+                <select
+                  value={selectedPlatform}
+                  onChange={(event) => setSelectedPlatform(event.target.value)}
+                >
+                  {platforms.map((platform) => (
+                    <option key={platform} value={platform}>
+                      {platform}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Due Health</span>
+                <select
+                  value={selectedDueHealth}
+                  onChange={(event) => setSelectedDueHealth(event.target.value)}
+                >
+                  {["All", "Open", "Closed", "Overdue", "Due This Month"].map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button type="button" className="secondary-button" onClick={resetDashboard}>
+                Reset Firebase Data
+              </button>
+            </div>
+
+            <div className="auth-panel">
+              <div className="auth-copy">
+                <strong>{role === "admin" ? "Admin" : "Viewer"}</strong>
+                <span>
+                  {role === "admin"
+                    ? "Full edit access is active."
+                    : "Signed in without admin access. View-only mode is active."}
                 </span>
               </div>
-              <span className="project-date">Due: {project.dueDate}</span>
+              <button type="button" className="primary-button" onClick={handleSignOut}>
+                Sign Out
+              </button>
             </div>
+          </section>
 
-            {canEdit ? (
-              <div className="status-editor">
-                <label>
-                  <span>Observation Status</span>
-                  <select
-                    value={project.status}
-                    onChange={(event) =>
-                      updateProject(project.id, "status", event.target.value)
-                    }
+          <section className="status-strip">
+            {STATUSES.map((status) => (
+              <article key={status.id} className="status-card">
+                <div>
+                  <h3>{status.label}</h3>
+                  <p>{status.hint}</p>
+                </div>
+                <span
+                  className="column-count"
+                  style={{ backgroundColor: status.accent }}
+                >
+                  {getStatusCount(projects, status.id)}
+                </span>
+              </article>
+            ))}
+          </section>
+
+          <section className="observation-grid">
+            {sortedProjects.map((project) => (
+              <article
+                key={project.id}
+                className={`project-card ${
+                  project.status === "delivered" ? "project-card-closed" : ""
+                }`}
+              >
+                <div className="project-topline">
+                  <div className="project-topline-left">
+                    <span className="observation-number">{project.name}</span>
+                    <span
+                      className="status-pill"
+                      style={{
+                        backgroundColor:
+                          STATUSES.find((status) => status.id === project.status)?.accent
+                      }}
+                    >
+                      {STATUSES.find((status) => status.id === project.status)?.label}
+                    </span>
+                    {isOverdue(project) ? <span className="alert-pill">Overdue</span> : null}
+                  </div>
+                  <span className="project-date">Due: {project.dueDate}</span>
+                </div>
+
+                {canEdit ? (
+                  <div className="status-editor">
+                    <label>
+                      <span>Observation Status</span>
+                      <select
+                        value={project.status}
+                        onChange={(event) =>
+                          updateProjectField(
+                            project.id,
+                            "status",
+                            event.target.value,
+                            `Status changed to ${
+                              STATUSES.find((status) => status.id === event.target.value)?.label
+                            }`
+                          )
+                        }
+                      >
+                        {STATUSES.map((status) => (
+                          <option key={status.id} value={status.id}>
+                            {status.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+
+                {canEdit ? (
+                  <label className="editor-block">
+                    <span>Observation</span>
+                    <textarea
+                      rows="4"
+                      value={project.title}
+                      onChange={(event) =>
+                        updateProjectField(
+                          project.id,
+                          "title",
+                          event.target.value,
+                          "Observation description updated"
+                        )
+                      }
+                    />
+                  </label>
+                ) : (
+                  <div className="viewer-block">
+                    <span>Observation</span>
+                    <p>{project.title}</p>
+                  </div>
+                )}
+
+                <dl className="project-meta">
+                  <div>
+                    <dt>Platform</dt>
+                    <dd>{project.client}</dd>
+                  </div>
+                  <div>
+                    <dt>Reference</dt>
+                    <dd>{project.reference}</dd>
+                  </div>
+                  <div>
+                    <dt>Severity</dt>
+                    <dd>
+                      <span className={`risk-chip risk-${project.risk.toLowerCase()}`}>
+                        {project.category}
+                      </span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Owner</dt>
+                    <dd>{project.owner}</dd>
+                  </div>
+                  <div>
+                    <dt>Last Updated</dt>
+                    <dd>{formatTimestamp(project.lastUpdatedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Updated By</dt>
+                    <dd>{project.lastUpdatedBy || "Seed data"}</dd>
+                  </div>
+                </dl>
+
+                {canEdit ? (
+                  <label className="editor-block">
+                    <span>Latest Update</span>
+                    <textarea
+                      rows="4"
+                      value={project.nextStep}
+                      onChange={(event) =>
+                        updateProjectField(
+                          project.id,
+                          "nextStep",
+                          event.target.value,
+                          "Latest update refreshed"
+                        )
+                      }
+                    />
+                  </label>
+                ) : (
+                  <div className="viewer-block">
+                    <span>Latest Update</span>
+                    <p>{project.nextStep}</p>
+                  </div>
+                )}
+
+                <div className="project-progress">
+                  <div className="progress-line">
+                    <span style={{ width: `${project.progress}%` }} />
+                  </div>
+                  <strong>{project.progress}%</strong>
+                </div>
+
+                <div className="project-card-footer">
+                  {canEdit ? (
+                    <div className="project-actions project-actions-single">
+                      <label>
+                        <span>Assign Owner</span>
+                        <select
+                          value={project.owner}
+                          onChange={(event) =>
+                            updateProjectField(
+                              project.id,
+                              "owner",
+                              event.target.value,
+                              `Owner changed to ${event.target.value}`
+                            )
+                          }
+                        >
+                          {TEAM_MEMBERS.map((member) => (
+                            <option key={member} value={member}>
+                              {member}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="view-only-banner">View only. Sign in to make changes.</div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setSelectedObservationId(project.id)}
                   >
-                    {STATUSES.map((status) => (
-                      <option key={status.id} value={status.id}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    View Details
+                  </button>
+                </div>
+              </article>
+            ))}
+
+            {sortedProjects.length === 0 ? (
+              <div className="empty-column">
+                <strong>No observations found</strong>
+                <span>Try adjusting the search or filter selection.</span>
               </div>
             ) : null}
+          </section>
 
-            {canEdit ? (
-              <label className="editor-block">
-                <span>Observation</span>
-                <textarea
-                  rows="4"
-                  value={project.title}
-                  onChange={(event) =>
-                    updateProject(project.id, "title", event.target.value)
-                  }
-                />
-              </label>
-            ) : (
-              <div className="viewer-block">
-                <span>Observation</span>
-                <p>{project.title}</p>
-              </div>
-            )}
-
-            <dl className="project-meta">
-              <div>
-                <dt>Platform</dt>
-                <dd>{project.client}</dd>
-              </div>
-              <div>
-                <dt>Reference</dt>
-                <dd>{project.reference}</dd>
-              </div>
-              <div>
-                <dt>Severity</dt>
-                <dd>
-                  <span className={`risk-chip risk-${project.risk.toLowerCase()}`}>
-                    {project.category}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt>Owner</dt>
-                <dd>{project.owner}</dd>
-              </div>
-            </dl>
-
-            {canEdit ? (
-              <label className="editor-block">
-                <span>Latest Update</span>
-                <textarea
-                  rows="4"
-                  value={project.nextStep}
-                  onChange={(event) =>
-                    updateProject(project.id, "nextStep", event.target.value)
-                  }
-                />
-              </label>
-            ) : (
-              <div className="viewer-block">
-                <span>Latest Update</span>
-                <p>{project.nextStep}</p>
-              </div>
-            )}
-
-            <div className="project-progress">
-              <div className="progress-line">
-                <span style={{ width: `${project.progress}%` }} />
-              </div>
-              <strong>{project.progress}%</strong>
-            </div>
-
-            {canEdit ? (
-              <div className="project-actions">
-                <label>
-                  <span>Assign Owner</span>
-                  <select
-                    value={project.owner}
-                    onChange={(event) =>
-                      updateProject(project.id, "owner", event.target.value)
-                    }
+          {selectedObservation ? (
+            <div className="details-backdrop" onClick={() => setSelectedObservationId(null)}>
+              <aside
+                className="details-panel"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="details-header">
+                  <div>
+                    <span className="eyebrow">Observation Details</span>
+                    <h2>{selectedObservation.name}</h2>
+                    <p>{selectedObservation.title}</p>
+                  </div>
+                  <div className="details-header-actions">
+                    <span className={`role-badge role-badge-${role}`}>
+                      {role === "admin" ? "Admin Access" : "View Only"}
+                    </span>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setSelectedObservationId(null)}
                   >
-                    {TEAM_MEMBERS.map((member) => (
-                      <option key={member} value={member}>
-                        {member}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            ) : (
-              <div className="view-only-banner">View only. Sign in to make changes.</div>
-            )}
-          </article>
-        ))}
+                    Close
+                  </button>
+                  </div>
+                </div>
 
-        {sortedProjects.length === 0 ? (
-          <div className="empty-column">
-            <strong>No observations found</strong>
-            <span>Try adjusting the search or filter selection.</span>
-          </div>
-        ) : null}
-      </section>
+                <div className="details-grid">
+                  <div className="details-card">
+                    <h3>Overview</h3>
+                    {canEdit ? (
+                      <label className="editor-block">
+                        <span>Executive Summary</span>
+                        <textarea
+                          rows="4"
+                          value={selectedObservation.details}
+                          onChange={(event) =>
+                            updateProjectField(
+                              selectedObservation.id,
+                              "details",
+                              event.target.value,
+                              "Observation overview updated"
+                            )
+                          }
+                        />
+                      </label>
+                    ) : (
+                      <p>{selectedObservation.details}</p>
+                    )}
+                    <dl className="details-meta">
+                      <div>
+                        <dt>Status</dt>
+                        <dd>
+                          {STATUSES.find((status) => status.id === selectedObservation.status)?.label}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Due Date</dt>
+                        <dd>
+                          {canEdit ? (
+                            <input
+                              type="text"
+                              value={selectedObservation.dueDate}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "dueDate",
+                                  event.target.value,
+                                  "Due date updated"
+                                )
+                              }
+                            />
+                          ) : (
+                            selectedObservation.dueDate
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Owner</dt>
+                        <dd>{selectedObservation.owner}</dd>
+                      </div>
+                      <div>
+                        <dt>Platform</dt>
+                        <dd>{selectedObservation.client}</dd>
+                      </div>
+                      <div>
+                        <dt>Progress</dt>
+                        <dd>
+                          {canEdit ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={selectedObservation.progress}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "progress",
+                                  clampProgress(event.target.value),
+                                  "Progress updated"
+                                )
+                              }
+                            />
+                          ) : (
+                            `${selectedObservation.progress}%`
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <div className="details-card">
+                    <h3>Evidence Link</h3>
+                    {canEdit ? (
+                      <>
+                        <label className="editor-block">
+                          <span>Attachment URL</span>
+                          <input
+                            type="url"
+                            value={selectedObservation.attachmentUrl}
+                            onChange={(event) =>
+                              updateProjectField(
+                                selectedObservation.id,
+                                "attachmentUrl",
+                                event.target.value,
+                                "Evidence link updated"
+                              )
+                            }
+                            placeholder="https://..."
+                          />
+                        </label>
+                        <label className="editor-block">
+                          <span>Attachment Label</span>
+                          <input
+                            type="text"
+                            value={selectedObservation.attachmentLabel}
+                            onChange={(event) =>
+                              updateProjectField(
+                                selectedObservation.id,
+                                "attachmentLabel",
+                                event.target.value,
+                                "Evidence label updated"
+                              )
+                            }
+                            placeholder="Evidence package"
+                          />
+                        </label>
+                      </>
+                    ) : null}
+                    {selectedObservation.attachmentUrl ? (
+                      <a
+                        className="evidence-link"
+                        href={selectedObservation.attachmentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {selectedObservation.attachmentLabel || "Open evidence link"}
+                      </a>
+                    ) : (
+                      <p className="muted-copy">No evidence link added yet.</p>
+                    )}
+                  </div>
+
+                  <div className="details-card details-card-wide">
+                    <h3>Activity Timeline</h3>
+                    {canEdit ? (
+                      <div className="timeline-compose">
+                        <textarea
+                          rows="3"
+                          value={detailNote}
+                          onChange={(event) => setDetailNote(event.target.value)}
+                          placeholder="Add a manual timeline note or review remark"
+                        />
+                        <button
+                          type="button"
+                          className="primary-button"
+                          onClick={saveDetailNote}
+                          disabled={!detailNote.trim()}
+                        >
+                          Add Note
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="timeline-list">
+                      {selectedObservation.history.length > 0 ? (
+                        selectedObservation.history.map((item) => (
+                          <article key={item.id} className="timeline-item">
+                            <strong>{item.message}</strong>
+                            <span>{item.actor}</span>
+                            <small>{formatTimestamp(item.createdAt)}</small>
+                          </article>
+                        ))
+                      ) : (
+                        <p className="muted-copy">No activity captured yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          ) : null}
         </>
       )}
     </div>
