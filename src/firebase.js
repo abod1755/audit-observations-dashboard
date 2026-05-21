@@ -3,13 +3,13 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCwRPc6JCurJMa2-verO3XLJxYqpd3l-Mg",
-  authDomain: "iam-dashboard-1755.firebaseapp.com",
-  projectId: "iam-dashboard-1755",
-  storageBucket: "iam-dashboard-1755.firebasestorage.app",
-  messagingSenderId: "960424171655",
-  appId: "1:960424171655:web:d60dbaecdf440b90ed4022",
-  measurementId: "G-R4982HLCL9"
+  apiKey: "AIzaSyCuzbQfDFZpfUHVM6CLBr9s1Rl8VjfXbbg",
+  authDomain: "iam-dashboard-175.firebaseapp.com",
+  projectId: "iam-dashboard-175",
+  storageBucket: "iam-dashboard-175.firebasestorage.app",
+  messagingSenderId: "532916055741",
+  appId: "1:532916055741:web:9521c996f5cf3983e611d4",
+  measurementId: "G-HLTREFGP4P"
 };
 
 const app = initializeApp(firebaseConfig);
