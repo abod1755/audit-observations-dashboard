@@ -46,8 +46,8 @@ const STATUSES = [
 
 const TEAM_MEMBERS = ["Abdullah"];
 const OBSERVATIONS_COLLECTION = "observations";
-const ADMIN_EMAIL = "smsm17555@gmail.com";
-const ALLOWED_USERS = ["smsm17555@gmail.com"];
+const ADMIN_EMAIL = "admin@riyadbank.com";
+const ALLOWED_USERS = ["admin@riyadbank.com"];
 
 function getStatusCount(projects, statusId) {
   return projects.filter((project) => project.status === statusId).length;
