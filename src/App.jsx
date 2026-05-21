@@ -367,6 +367,11 @@ export default function App() {
         <>
       <header className="hero-panel">
         <div className="hero-copy">
+          <img
+            className="brand-logo"
+            src="/riyad-bank-logo.webp"
+            alt="Riyad Bank"
+          />
           <span className="eyebrow">Audit Remediation Workspace</span>
           <h1>Audit Observations Tracker Dashboard</h1>
           <p>
