@@ -1,0 +1,60 @@
+:root {
+  --page: #f4f7fb;
+  --surface: rgba(255, 255, 255, 0.82);
+  --ink: #0f172a;
+  --muted: #5b6b7f;
+  --border-soft: rgba(148, 163, 184, 0.22);
+  --sky: #bae6fd;
+  --amber: #fde68a;
+  --blue: #93c5fd;
+  --green: #86efac;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(186, 230, 253, 0.45), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(196, 181, 253, 0.18), transparent 20%),
+    linear-gradient(180deg, #f8fbff, #f1f5f9 58%, #eef2f7);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  direction: ltr;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+body,
+input,
+select,
+button,
+textarea {
+  font-family: inherit;
+}
+
+#root {
+  width: min(1520px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+a {
+  color: inherit;
+}
+
+@media (max-width: 768px) {
+  #root {
+    width: min(100% - 20px, 1520px);
+    padding-top: 16px;
+  }
+}
