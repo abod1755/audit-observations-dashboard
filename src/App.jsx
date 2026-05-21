@@ -19,7 +19,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import initialProjects from "./projects.json";
-import { auth, db } from "./firebase";
+import { auth, db, firebaseConfigError } from "./firebase";
 import "./App.css";
 
 const STATUSES = [
@@ -209,6 +209,9 @@ export default function App() {
 
   useEffect(
     () =>
+      firebaseConfigError || !auth
+        ? () => {}
+        :
       onAuthStateChanged(auth, (user) => {
         if (user && !ALLOWED_USERS.includes(user.email ?? "")) {
           setAuthError("This account is not allowed to access the dashboard.");
@@ -227,7 +230,7 @@ export default function App() {
   useEffect(() => {
     let isActive = true;
 
-    if (!currentUser) {
+    if (!currentUser || !db || firebaseConfigError) {
       return () => {
         isActive = false;
       };
@@ -427,7 +430,7 @@ export default function App() {
   const applyProjectPatch = async (projectId, buildNextProject) => {
     const currentProject = projects.find((project) => project.id === projectId);
 
-    if (!currentProject || !currentUser?.email) {
+    if (!currentProject || !currentUser?.email || !db) {
       return;
     }
 
@@ -504,6 +507,11 @@ export default function App() {
       return;
     }
 
+    if (!db) {
+      setSyncError("Firebase is not configured yet.");
+      return;
+    }
+
     const confirmed = window.confirm(
       "Reset all observations back to the seed data? This will overwrite the current Firebase records."
     );
@@ -529,6 +537,11 @@ export default function App() {
   const handleEmailSignIn = async (event) => {
     event.preventDefault();
 
+    if (!auth || firebaseConfigError) {
+      setAuthError(firebaseConfigError || "Firebase authentication is not configured.");
+      return;
+    }
+
     setIsSigningIn(true);
     setAuthError("");
 
@@ -543,6 +556,10 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
+    if (!auth) {
+      return;
+    }
+
     try {
       await signOut(auth);
       setSyncError("");
@@ -554,7 +571,19 @@ export default function App() {
 
   return (
     <div className="dashboard-shell">
-      {!isAuthReady ? (
+      {firebaseConfigError ? (
+        <section className="auth-gate">
+          <div className="auth-gate-card">
+            <span className="eyebrow">Configuration Needed</span>
+            <h1>Dashboard setup is incomplete</h1>
+            <p>
+              The deployment is missing Firebase environment variables, so the app
+              cannot connect yet.
+            </p>
+            <small>{firebaseConfigError}</small>
+          </div>
+        </section>
+      ) : !isAuthReady ? (
         <section className="auth-gate">
           <div className="auth-gate-card">
             <span className="eyebrow">Secure Access</span>
