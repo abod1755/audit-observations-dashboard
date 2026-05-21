@@ -11,6 +11,7 @@ import {
   signOut
 } from "firebase/auth";
 import {
+  addDoc,
   collection,
   doc,
   getDocs,
@@ -141,6 +142,29 @@ function enrichObservation(project) {
     details:
       project.details ??
       `${project.title} This observation is being tracked through the remediation dashboard.`
+  };
+}
+
+function createEmptyObservation(nextId, actor) {
+  return {
+    id: nextId,
+    name: `Observation ${nextId}`,
+    title: "New observation title",
+    client: "SailPoint",
+    owner: TEAM_MEMBERS[0],
+    status: "new",
+    category: "Medium",
+    progress: 10,
+    risk: "Medium",
+    dueDate: "31/12/2026",
+    nextStep: "Add the first remediation update.",
+    reference: "N/A",
+    details: "Add the executive summary for this new observation.",
+    attachmentUrl: "",
+    attachmentLabel: "",
+    lastUpdatedAt: new Date().toISOString(),
+    lastUpdatedBy: actor,
+    history: [buildHistoryEntry("Observation created", actor)]
   };
 }
 
@@ -534,6 +558,28 @@ export default function App() {
     }
   };
 
+  const createObservation = async () => {
+    if (!canEdit || !db || !currentUser?.email) {
+      setSyncError("Only the admin account can create observations.");
+      return;
+    }
+
+    const nextId = projects.length > 0 ? Math.max(...projects.map((project) => project.id)) + 1 : 1;
+    const nextObservation = createEmptyObservation(nextId, currentUser.email);
+
+    startTransition(() => {
+      setProjects((currentProjects) => [...currentProjects, nextObservation]);
+      setSelectedObservationId(nextId);
+    });
+
+    try {
+      await addDoc(collection(db, OBSERVATIONS_COLLECTION), nextObservation);
+      setSyncError("");
+    } catch (error) {
+      setSyncError(error.message);
+    }
+  };
+
   const handleEmailSignIn = async (event) => {
     event.preventDefault();
 
@@ -775,6 +821,11 @@ export default function App() {
               {canEdit ? (
                 <button type="button" className="secondary-button" onClick={resetDashboard}>
                   Reset Firebase Data
+                </button>
+              ) : null}
+              {canEdit ? (
+                <button type="button" className="primary-button" onClick={createObservation}>
+                  Create New Observation
                 </button>
               ) : null}
             </div>
@@ -1044,9 +1095,54 @@ export default function App() {
                     )}
                     <dl className="details-meta">
                       <div>
+                        <dt>Observation Name</dt>
+                        <dd>
+                          {canEdit ? (
+                            <input
+                              type="text"
+                              value={selectedObservation.name}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "name",
+                                  event.target.value,
+                                  "Observation name updated"
+                                )
+                              }
+                            />
+                          ) : (
+                            selectedObservation.name
+                          )}
+                        </dd>
+                      </div>
+                      <div>
                         <dt>Status</dt>
                         <dd>
-                          {STATUSES.find((status) => status.id === selectedObservation.status)?.label}
+                          {canEdit ? (
+                            <select
+                              value={selectedObservation.status}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "status",
+                                  event.target.value,
+                                  `Status changed to ${
+                                    STATUSES.find(
+                                      (status) => status.id === event.target.value
+                                    )?.label
+                                  }`
+                                )
+                              }
+                            >
+                              {STATUSES.map((status) => (
+                                <option key={status.id} value={status.id}>
+                                  {status.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            STATUSES.find((status) => status.id === selectedObservation.status)?.label
+                          )}
                         </dd>
                       </div>
                       <div>
@@ -1072,11 +1168,118 @@ export default function App() {
                       </div>
                       <div>
                         <dt>Owner</dt>
-                        <dd>{selectedObservation.owner}</dd>
+                        <dd>
+                          {canEdit ? (
+                            <select
+                              value={selectedObservation.owner}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "owner",
+                                  event.target.value,
+                                  `Owner changed to ${event.target.value}`
+                                )
+                              }
+                            >
+                              {TEAM_MEMBERS.map((member) => (
+                                <option key={member} value={member}>
+                                  {member}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            selectedObservation.owner
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt>Platform</dt>
-                        <dd>{selectedObservation.client}</dd>
+                        <dd>
+                          {canEdit ? (
+                            <input
+                              type="text"
+                              value={selectedObservation.client}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "client",
+                                  event.target.value,
+                                  "Platform updated"
+                                )
+                              }
+                            />
+                          ) : (
+                            selectedObservation.client
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Reference</dt>
+                        <dd>
+                          {canEdit ? (
+                            <input
+                              type="text"
+                              value={selectedObservation.reference}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "reference",
+                                  event.target.value,
+                                  "Reference updated"
+                                )
+                              }
+                            />
+                          ) : (
+                            selectedObservation.reference
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Category</dt>
+                        <dd>
+                          {canEdit ? (
+                            <input
+                              type="text"
+                              value={selectedObservation.category}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "category",
+                                  event.target.value,
+                                  "Category updated"
+                                )
+                              }
+                            />
+                          ) : (
+                            selectedObservation.category
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Risk</dt>
+                        <dd>
+                          {canEdit ? (
+                            <select
+                              value={selectedObservation.risk}
+                              onChange={(event) =>
+                                updateProjectField(
+                                  selectedObservation.id,
+                                  "risk",
+                                  event.target.value,
+                                  "Risk updated"
+                                )
+                              }
+                            >
+                              {["Low", "Medium", "High"].map((riskLevel) => (
+                                <option key={riskLevel} value={riskLevel}>
+                                  {riskLevel}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            selectedObservation.risk
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt>Progress</dt>

@@ -244,6 +244,7 @@
 .toolbar input,
 .toolbar select,
 .project-actions select,
+.details-meta select,
 .secondary-button {
   width: 100%;
   min-height: 46px;
@@ -258,6 +259,7 @@
 .toolbar input:focus,
 .toolbar select:focus,
 .project-actions select:focus,
+.details-meta select:focus,
 .secondary-button:focus {
   outline: none;
   border-color: rgba(14, 116, 144, 0.45);
@@ -810,6 +812,17 @@
 }
 
 .details-meta input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.88);
+  color: var(--ink);
+  font: inherit;
+}
+
+.details-meta select {
   width: 100%;
   min-height: 40px;
   padding: 0 12px;
