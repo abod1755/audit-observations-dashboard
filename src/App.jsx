@@ -635,22 +635,6 @@ export default function App() {
                     ))}
                   </select>
                 </label>
-
-                <label>
-                  <span>Quick Status</span>
-                  <select
-                    value={project.status}
-                    onChange={(event) =>
-                      updateProject(project.id, "status", event.target.value)
-                    }
-                  >
-                    {STATUSES.map((status) => (
-                      <option key={status.id} value={status.id}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
               </div>
             ) : (
               <div className="view-only-banner">View only. Sign in to make changes.</div>
