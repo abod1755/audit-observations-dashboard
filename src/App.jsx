@@ -499,6 +499,19 @@ export default function App() {
   };
 
   const resetDashboard = async () => {
+    if (!canEdit) {
+      setSyncError("Only the admin account can reset Firebase data.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Reset all observations back to the seed data? This will overwrite the current Firebase records."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     try {
       const batch = writeBatch(db);
 
@@ -730,9 +743,11 @@ export default function App() {
                 </select>
               </label>
 
-              <button type="button" className="secondary-button" onClick={resetDashboard}>
-                Reset Firebase Data
-              </button>
+              {canEdit ? (
+                <button type="button" className="secondary-button" onClick={resetDashboard}>
+                  Reset Firebase Data
+                </button>
+              ) : null}
             </div>
 
             <div className="auth-panel">
