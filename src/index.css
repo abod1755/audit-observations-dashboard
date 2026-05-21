@@ -1,19 +1,20 @@
 :root {
-  --page: #f4f7fb;
-  --surface: rgba(255, 255, 255, 0.82);
-  --ink: #0f172a;
-  --muted: #5b6b7f;
-  --border-soft: rgba(148, 163, 184, 0.22);
-  --sky: #bae6fd;
-  --amber: #fde68a;
-  --blue: #93c5fd;
-  --green: #86efac;
+  --page: #07111f;
+  --surface: rgba(15, 23, 42, 0.78);
+  --surface-strong: rgba(15, 23, 42, 0.92);
+  --ink: #e5eefb;
+  --muted: #9db0ca;
+  --border-soft: rgba(148, 163, 184, 0.18);
+  --sky: #38bdf8;
+  --amber: #fbbf24;
+  --blue: #60a5fa;
+  --green: #22c55e;
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(186, 230, 253, 0.45), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(196, 181, 253, 0.18), transparent 20%),
-    linear-gradient(180deg, #f8fbff, #f1f5f9 58%, #eef2f7);
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(251, 191, 36, 0.08), transparent 20%),
+    linear-gradient(180deg, #020617, #08111f 45%, #0b1324);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -32,6 +33,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: transparent;
 }
 
 body,

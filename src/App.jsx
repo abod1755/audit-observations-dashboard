@@ -533,6 +533,26 @@ export default function App() {
             </div>
 
             {canEdit ? (
+              <div className="status-editor">
+                <label>
+                  <span>Observation Status</span>
+                  <select
+                    value={project.status}
+                    onChange={(event) =>
+                      updateProject(project.id, "status", event.target.value)
+                    }
+                  >
+                    {STATUSES.map((status) => (
+                      <option key={status.id} value={status.id}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+
+            {canEdit ? (
               <label className="editor-block">
                 <span>Observation</span>
                 <textarea
@@ -617,7 +637,7 @@ export default function App() {
                 </label>
 
                 <label>
-                  <span>Update Status</span>
+                  <span>Quick Status</span>
                   <select
                     value={project.status}
                     onChange={(event) =>
