@@ -896,6 +896,11 @@
   .observation-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .toolbar-controls-extended {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
 }
 
 @media (max-width: 900px) {
@@ -909,6 +914,14 @@
   .auth-panel {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .hero-copy h1 {
+    max-width: 100%;
+  }
+
+  .hero-side {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .summary-grid,
@@ -935,5 +948,207 @@
   .details-header-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-shell {
+    gap: 16px;
+  }
+
+  .auth-gate {
+    min-height: calc(100vh - 32px);
+  }
+
+  .auth-gate-card,
+  .hero-panel,
+  .toolbar,
+  .summary-card,
+  .status-card,
+  .project-card,
+  .details-card {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .brand-logo {
+    width: min(220px, 82%);
+  }
+
+  .hero-copy {
+    gap: 12px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(1.85rem, 9vw, 2.7rem);
+    line-height: 1.02;
+  }
+
+  .hero-copy p {
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .hero-side {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-stat {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .hero-stat strong {
+    font-size: 2rem;
+  }
+
+  .summary-grid,
+  .summary-grid-extended {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .summary-card strong {
+    font-size: 1.7rem;
+  }
+
+  .toolbar {
+    padding: 18px;
+  }
+
+  .toolbar-title h2 {
+    font-size: 1.2rem;
+  }
+
+  .toolbar-controls,
+  .toolbar-controls-extended {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .toolbar label,
+  .project-actions label,
+  .status-editor label {
+    width: 100%;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .ghost-button {
+    width: 100%;
+  }
+
+  .status-card {
+    align-items: flex-start;
+  }
+
+  .column-count {
+    min-width: 38px;
+    height: 38px;
+  }
+
+  .observation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-card {
+    gap: 14px;
+  }
+
+  .project-topline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .project-date {
+    font-size: 0.82rem;
+  }
+
+  .project-meta div:last-child {
+    grid-column: auto;
+  }
+
+  .project-progress {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-progress strong {
+    align-self: flex-end;
+  }
+
+  .details-backdrop {
+    align-items: flex-end;
+  }
+
+  .details-panel {
+    width: 100%;
+    height: min(92vh, 100%);
+    padding: 18px;
+    border-left: 0;
+    border-top: 1px solid var(--border-soft);
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 50px rgba(2, 6, 23, 0.4);
+  }
+
+  .details-header h2 {
+    font-size: 1.6rem;
+  }
+
+  .details-meta dd,
+  .project-meta dd,
+  .viewer-block p,
+  .details-card p,
+  .timeline-item strong {
+    overflow-wrap: anywhere;
+  }
+
+  .timeline-compose .primary-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .eyebrow,
+  .observation-number,
+  .status-pill,
+  .alert-pill,
+  .risk-chip,
+  .role-badge {
+    font-size: 0.75rem;
+  }
+
+  .auth-gate-card h1 {
+    font-size: 1.8rem;
+  }
+
+  .login-form input,
+  .toolbar input,
+  .toolbar select,
+  .project-actions select,
+  .status-editor select,
+  .editor-block input,
+  .primary-button,
+  .secondary-button,
+  .ghost-button {
+    min-height: 44px;
+  }
+
+  .project-meta,
+  .details-meta {
+    gap: 10px;
+  }
+
+  .viewer-block,
+  .project-meta div,
+  .details-meta div,
+  .timeline-item {
+    padding: 12px;
+  }
+
+  .details-header p,
+  .hero-copy p,
+  .toolbar-title p {
+    font-size: 0.92rem;
   }
 }
